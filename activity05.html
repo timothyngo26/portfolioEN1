@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Activity: Programming with Sensors</title>
+    <link rel="stylesheet" href="./project.css">
+</head>
+<body>
+
+    <!-- Header and Navigation Section -->
+    <header class="header">
+        <nav class="navbar">
+            <a href="./index.html" class="active">Home</a>
+        </nav>
+    </header>
+
+    <!-- Project Information -->
+    <div class="proj-container">
+
+        <h1 class='proj-header'>Project Portfolio</h1>
+
+        <h2 class='proj-header'>Activity 05: Programming with Sensors</h2>
+
+        <div class="proj-desc">
+            <p>This program uses the hub's roll and pitch readings to control a motor connected to port A. The motor runs only when the hub is tilted to the required roll angle; pitch controls its direction and speed, and the motor stops when the pitch is close to level.</p>
+        </div>
+
+        <div class="proj-code">
+            <h3>Code:</h3>
+            <pre><code># Assumed setup: the motor is connected to port A.
+from hub import port, motion_sensor
+import runloop
+import motor
+
+# Roll must be -90 degrees or lower to allow the motor to run.
+ROLL_LIMIT = -900  # decidegrees: -900 is -90 degrees
+
+# Ignore small pitch tilts near level.
+PITCH_THRESHOLD = 100  # decidegrees: 100 is 10 degrees
+
+# Set how quickly motor speed increases with pitch.
+SPEED_PER_DECIDEGREE = 2
+
+# Keep the motor speed within a safe limit.
+MAX_SPEED = 1000  # degrees per second
+
+async def main():
+    # Keep checking roll and pitch.
+    while True:
+        roll = motion_sensor.tilt_angles()[2]
+        pitch = motion_sensor.tilt_angles()[1]
+
+        # Stop the motor unless roll is -90 degrees or lower.
+        if roll > ROLL_LIMIT:
+            motor.stop(port.A)
+
+        # Use pitch to control direction and speed when roll allows it.
+        elif pitch > PITCH_THRESHOLD:
+            speed = int(pitch * SPEED_PER_DECIDEGREE)
+            speed = min(speed, MAX_SPEED)
+            motor.run(port.A, speed)
+
+        # Tilt backward to run the motor in the opposite direction.
+        elif pitch < -PITCH_THRESHOLD:
+            speed = int(abs(pitch) * SPEED_PER_DECIDEGREE)
+            speed = min(speed, MAX_SPEED)
+            motor.run(port.A, -speed)
+
+        # Stop when pitch is close to level.
+        else:
+            motor.stop(port.A)
+
+        # Pause briefly before checking the hub's orientation again.
+        await runloop.sleep_ms(20)
+
+runloop.run(main())</code></pre>
+        </div>
+
+    </div>
+    <!-- End Project Information -->
+
+</body>
+</html>
