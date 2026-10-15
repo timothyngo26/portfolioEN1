@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Project 08: Astronaut Tools</title>
+    <link rel="stylesheet" href="./project.css">
+</head>
+<body>
+
+    <header class="header">
+        <nav class="navbar">
+            <a href="./index.html" class="active">Home</a>
+        </nav>
+    </header>
+
+    <div class="proj-container">
+
+        <h1 class='proj-header'>Project Portfolio</h1>
+
+        <div class="proj-img-container">
+            <img src="./images/project08.png" alt="Astronaut tools project cover">
+        </div>
+
+        <h2 class='proj-header'>Project 08: Astronaut Tools</h2>
+
+        <div class="proj-desc">
+            <p>This project focuses on tools designed for use in space. The challenge is to think about how equipment must work in environments with low gravity, limited space, and strict safety requirements.</p>
+        </div>
+
+        <div class="proj-desc">
+            <h3>Design considerations</h3>
+            <ul>
+                <li>Easy handling while wearing gloves or working in a constrained space</li>
+                <li>Lightweight design for limited payload and storage needs</li>
+                <li>Reliable function for repeated use in demanding conditions</li>
+            </ul>
+        </div>
+
+        <div class="proj-desc">
+            <p>The goal of the project is to explore practical design thinking for equipment that astronauts may need during missions, with an emphasis on usability, safety, and mission-ready functionality.</p>
+        </div>
+
+        <div class="proj-video-container">
+            <iframe src="https://www.youtube.com/embed/nqoZ8PNbqj4" title="Project 08 video" allowfullscreen></iframe>
+        </div>
+
+        <div class="proj-desc">
+            <h3>How the code works</h3>
+            <p>The code runs the three connected motors at the same speed and in the same direction. Their movement turns the gear ratio to create the screw-in and unscrew motion. When the force sensor is pressed, the motors run; each new press switches their direction. They stop when the sensor is released.</p>
+        </div>
+
+        <div class="proj-code">
+            <h3>Code used for the astronaut tool:</h3>
+            <pre><code># Setup: motors on ports A, B, and C; force sensor on port D.
+from hub import port
+import runloop
+import motor
+import force_sensor
+
+# Motor speed in degrees per second.
+SPEED = 2000
+
+async def main():
+    # Start with the first press running in the positive direction.
+    direction = 1
+
+    # Keep checking whether the force sensor is held.
+    while True:
+        if force_sensor.pressed(port.D):
+            # Switch direction for this press.
+            direction = -direction
+
+            # Run all three motors while the force sensor is held.
+            motor.run(port.A, SPEED * direction)
+            motor.run(port.B, SPEED * direction)
+            motor.run(port.C, SPEED * direction)
+
+            # Wait until the force sensor is released.
+            while force_sensor.pressed(port.D):
+                await runloop.sleep_ms(20)
+
+            # Stop all three motors when the sensor is released.
+            motor.stop(port.A)
+            motor.stop(port.B)
+            motor.stop(port.C)
+
+        # Pause briefly before checking again.
+        await runloop.sleep_ms(20)
+
+runloop.run(main())</code></pre>
+        </div>
+
+    </div>
+
+</body>
+</html>
