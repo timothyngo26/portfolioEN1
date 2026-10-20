@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Project 09: Robotic Arm</title>
+    <link rel="stylesheet" href="./project.css">
+</head>
+<body>
+
+    <header class="header">
+        <nav class="navbar">
+            <a href="./index.html" class="active">Home</a>
+        </nav>
+    </header>
+
+    <div class="proj-container">
+
+        <h1 class='proj-header'>Project Portfolio</h1>
+
+        <h2 class='proj-header'>Project 09: Robotic Arm</h2>
+
+        <div class="proj-desc">
+            <h3>Reflection</h3>
+            <p>It was not the best idea to rely on hard-coded motor movements for the robotic arm, because they often caused “performance anxiety” for the arm. I had to repeatedly adjust the gear so the arm would be upright at exactly the right moment and repeat the motion of bringing the ping pong ball back and forth.</p>
+            <p>I was extremely happy that I got the arm working during class. It also helped our side of the room have fewer “hand of Gods.”</p>
+        </div>
+
+        <div class="proj-code">
+            <h3>Code for the Robotic Arm:</h3>
+            <pre><code># Setup: arm motor on port D, motor B, and color sensor on port F.
+from hub import port
+import runloop
+import motor
+import color
+import color_sensor
+
+# Use gentle acceleration and conservative speeds for the arm.
+GENTLE_ACCELERATION = 20
+ARM_SPEED = 500
+RETURN_SPEED = 100
+MOTOR_B_SPEED = 40
+MOTOR_B_TURN = 80
+
+# Limit how far the arm swings toward the other side.
+CROSS_TO_OTHER_SIDE = -155
+
+async def main():
+    # Place the arm upright before starting and record its motor angle.
+    starting_angle = motor.absolute_position(port.D)
+
+    # Keep checking for a color and run the sequence each time one is detected.
+    while True:
+        # Wait until the sensor recognizes a color.
+        while color_sensor.color(port.F) == color.UNKNOWN:
+            await runloop.sleep_ms(50)
+
+        # Swing motor D 80 degrees to the first side.
+        await motor.run_for_degrees(
+            port.D, 65, ARM_SPEED,
+            acceleration=GENTLE_ACCELERATION,
+            deceleration=GENTLE_ACCELERATION,
+            stop=motor.HOLD
+        )
+
+        # Turn motor B 70 degrees.
+        await motor.run_for_degrees(
+            port.B, MOTOR_B_TURN, MOTOR_B_SPEED,
+            acceleration=GENTLE_ACCELERATION,
+            deceleration=GENTLE_ACCELERATION
+        )
+
+        # Swing toward the other side by the selected amount.
+        await motor.run_for_degrees(
+            port.D, CROSS_TO_OTHER_SIDE, ARM_SPEED,
+            acceleration=GENTLE_ACCELERATION,
+            deceleration=GENTLE_ACCELERATION,
+            stop=motor.HOLD
+        )
+
+        # Turn motor B 70 degrees back the other way.
+        await motor.run_for_degrees(
+            port.B, -MOTOR_B_TURN, MOTOR_B_SPEED,
+            acceleration=GENTLE_ACCELERATION,
+            deceleration=GENTLE_ACCELERATION
+        )
+
+        # Swing back to the first side.
+        await motor.run_for_degrees(
+            port.D, -CROSS_TO_OTHER_SIDE, RETURN_SPEED,
+            acceleration=GENTLE_ACCELERATION,
+            deceleration=GENTLE_ACCELERATION,
+            stop=motor.HOLD
+        )
+
+        # Return motor D to its recorded upright starting angle.
+        await motor.run_to_absolute_position(
+            port.D,
+            starting_angle,
+            RETURN_SPEED,
+            stop=motor.HOLD,
+            acceleration=GENTLE_ACCELERATION,
+            deceleration=GENTLE_ACCELERATION
+        )
+
+        # Wait for the sensor to stop detecting a color before triggering again.
+        while color_sensor.color(port.F) != color.UNKNOWN:
+            await runloop.sleep_ms(50)
+
+runloop.run(main())</code></pre>
+        </div>
+
+    </div>
+
+</body>
+</html>
