@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Project 12: Fruit Scanner</title>
+    <link rel="stylesheet" href="./project.css">
+</head>
+<body>
+
+    <header class="header">
+        <nav class="navbar">
+            <a href="./index.html" class="active">Home</a>
+        </nav>
+    </header>
+
+    <div class="proj-container">
+
+        <h1 class='proj-header'>Project Portfolio</h1>
+
+        <h2 class='proj-header'>Project 12: Fruit Scanner</h2>
+
+        <div class="proj-desc">
+            <h3>How the program works</h3>
+            <p>The program reads color values from the color sensor on port E when the force sensor on port C is pressed. The motor on port F chooses the label for each training example: positions from 0 to 180 degrees are labeled “APPLE,” and positions from 181 to 360 degrees are labeled “BANANA.” The left hub button selects training mode, and the right button selects testing mode.</p>
+            <p>In training mode, the program saves the sensor’s red, green, and blue readings along with the selected fruit label. These examples are stored in memory and are cleared when the program is started again.</p>
+            <p>In testing mode, a new RGB reading is compared with the saved examples. The program repeatedly picks up to five examples with the smallest squared RGB differences, counts their labels, and displays the label with more votes. If the two labels receive the same number of votes, it displays “BANANA.” The force sensor and hub buttons are checked for new presses so holding them down does not repeatedly trigger an action.</p>
+        </div>
+
+        <div class="proj-video-container">
+            <iframe src="https://www.youtube.com/embed/PPEr2I_DJkM" title="Fruit Scanner project video" allowfullscreen></iframe>
+        </div>
+
+        <div class="proj-code">
+            <h3>Code:</h3>
+            <pre><code># Setup: force sensor on C, color sensor on E, and motor on F.
+# Left hub button selects training mode; right hub button selects testing mode.
+# Turn the motor to 0–180 degrees to train an APPLE example,
+# or 181–360 degrees to train a BANANA example.
+# Press the force sensor to save a training color or test a color.
+# Training examples are cleared whenever the program is run again.
+
+from hub import port, button, light_matrix
+import runloop
+import motor
+import force_sensor
+import color_sensor
+
+# Use the five closest saved color measurements for each test.
+K_NEIGHBORS = 5
+
+async def main():
+    # Start the motor-position scale at zero for this program run.
+    motor.reset_relative_position(port.F, 0)
+
+    # Start in training mode.
+    training_mode = True
+
+    # Store the RGB color measurements and their fruit labels.
+    training_colors = []
+    training_labels = []
+
+    # Remember previous states so a held button or sensor is not repeated.
+    left_was_pressed = False
+    right_was_pressed = False
+    force_was_pressed = False
+
+    # Show that the program is ready to collect training examples.
+    await light_matrix.write("TRAIN")
+
+    # Check the buttons and force sensor repeatedly.
+    while True:
+        # Read the current hub button states.
+        left_is_pressed = button.pressed(button.LEFT) > 0
+        right_is_pressed = button.pressed(button.RIGHT) > 0
+
+        # Select training mode when the left button is newly pressed.
+        if left_is_pressed and not left_was_pressed:
+            training_mode = True
+            await light_matrix.write("TRAIN")
+
+        # Select testing mode when the right button is newly pressed.
+        if right_is_pressed and not right_was_pressed:
+            training_mode = False
+            await light_matrix.write("TEST")
+
+        # Read whether the force sensor is pressed.
+        force_is_pressed = force_sensor.pressed(port.C)
+
+        # Take one color reading for each new force sensor press.
+        if force_is_pressed and not force_was_pressed:
+            # Read red, green, blue, and intensity; keep the RGB values.
+            color_values = color_sensor.rgbi(port.E)
+            red_value = color_values[0]
+            green_value = color_values[1]
+            blue_value = color_values[2]
+
+            # In training mode, save the RGB values with the motor-selected label.
+            if training_mode:
+                motor_position = motor.relative_position(port.F)
+
+                # Save an apple example when the motor is in the lower range.
+                if motor_position >= 0 and motor_position <= 180:
+                    training_colors.append(
+                        (red_value, green_value, blue_value)
+                    )
+                    training_labels.append("APPLE")
+                    await light_matrix.write("SAVED APPLE")
+
+                # Save a banana example when the motor is in the upper range.
+                elif motor_position >= 181 and motor_position <= 360:
+                    training_colors.append(
+                        (red_value, green_value, blue_value)
+                    )
+                    training_labels.append("BANANA")
+                    await light_matrix.write("SAVED BANANA")
+
+                # Show a message if the motor is outside the label ranges.
+                else:
+                    await light_matrix.write("TURN MOTOR")
+
+            # In testing mode, use the five closest saved RGB colors.
+            else:
+                # Check that at least one training example exists.
+                if len(training_colors) == 0:
+                    await light_matrix.write("NO EXAMPLES")
+
+                else:
+                    # Use five neighbors, or all examples if fewer than five exist.
+                    number_of_neighbors = K_NEIGHBORS
+                    if len(training_colors) < K_NEIGHBORS:
+                        number_of_neighbors = len(training_colors)
+
+                    # Track which saved examples have already been selected.
+                    already_selected = []
+                    for example_number in range(len(training_colors)):
+                        already_selected.append(False)
+
+                    # Count the apple and banana votes from the nearest colors.
+                    apple_votes = 0
+                    banana_votes = 0
+
+                    # Find the closest unused training color one at a time.
+                    for neighbor_number in range(number_of_neighbors):
+                        closest_index = -1
+                        closest_difference = 1000000000
+
+                        # Compare the test RGB values with every unused example.
+                        for example_number in range(len(training_colors)):
+                            if not already_selected[example_number]:
+                                saved_color = training_colors[example_number]
+
+                                red_difference = red_value - saved_color[0]
+                                green_difference = green_value - saved_color[1]
+                                blue_difference = blue_value - saved_color[2]
+
+                                # Squared RGB distance ranks colors by closeness.
+                                color_difference = (
+                                    red_difference * red_difference
+                                    + green_difference * green_difference
+                                    + blue_difference * blue_difference
+                                )
+
+                                if color_difference < closest_difference:
+                                    closest_difference = color_difference
+                                    closest_index = example_number
+
+                        # Add a vote for the label of this closest example.
+                        if closest_index != -1:
+                            already_selected[closest_index] = True
+
+                            if training_labels[closest_index] == "APPLE":
+                                apple_votes = apple_votes + 1
+                            else:
+                                banana_votes = banana_votes + 1
+
+                    # Display the fruit label with the most votes.
+                    if apple_votes > banana_votes:
+                        await light_matrix.write("APPLE")
+                    else:
+                        await light_matrix.write("BANANA")
+
+        # Save current states so the next loop can detect new presses.
+        left_was_pressed = left_is_pressed
+        right_was_pressed = right_is_pressed
+        force_was_pressed = force_is_pressed
+
+        # Pause briefly to allow sensor updates and other hub tasks.
+        await runloop.sleep_ms(20)
+
+runloop.run(main())</code></pre>
+        </div>
+
+    </div>
+
+</body>
+</html>
