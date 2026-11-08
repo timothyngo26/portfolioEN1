@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Project 11: High or Low</title>
+    <link rel="stylesheet" href="./project.css">
+</head>
+<body>
+
+    <header class="header">
+        <nav class="navbar">
+            <a href="./index.html" class="active">Home</a>
+        </nav>
+    </header>
+
+    <div class="proj-container">
+
+        <h1 class='proj-header'>Project Portfolio</h1>
+
+        <h2 class='proj-header'>Project 11: High or Low</h2>
+
+        <div class="proj-desc">
+            <h3>How the program works</h3>
+            <p>This program uses a force sensor on port C to trigger a measurement from the distance sensor on port E. The motor on port F sets the label for training examples: positions from 0 to 180 degrees are labeled “SHORT,” and positions from 181 to 360 degrees are labeled “TALL.”</p>
+            <p>The left hub button selects training mode, and the right button selects testing mode. In training mode, pressing the force sensor saves the current distance reading and its motor-based label in lists. These examples remain available while the program is running.</p>
+            <p>In testing mode, pressing the force sensor takes a new distance reading and compares it with the saved training readings. The program finds up to five examples with the closest distance values, then displays whichever label (“TALL” or “SHORT”) gets more votes. If the distance sensor has no valid reading, or there are no saved examples yet, the hub displays a message instead.</p>
+        </div>
+
+        <div class="proj-video-container">
+            <iframe src="https://www.youtube.com/embed/lg57d5Fb5b0" title="High or Low project video" allowfullscreen></iframe>
+        </div>
+
+        <div class="proj-code">
+            <h3>Code:</h3>
+            <pre><code># Setup: force sensor on C, distance sensor on E, motor on F.
+# Left hub button selects training mode; right hub button selects testing mode.
+# Turn the motor to 0–180 degrees for a "short" training label,
+# or 181–360 degrees for a "tall" training label.
+# Press the force sensor to save a training example or test an object.
+
+from hub import port, button, light_matrix
+import runloop
+import motor
+import force_sensor
+import distance_sensor
+
+# Set the distance at which two samples are considered different.
+K_NEIGHBORS = 5
+
+async def main():
+    # Start the motor-position scale at zero each time the program runs.
+    motor.reset_relative_position(port.F, 0)
+
+    # Start in training mode.
+    training_mode = True
+
+    # Store each training distance and its tall/short label.
+    training_distances = []
+    training_labels = []
+
+    # Remember button and force-sensor states to detect new presses.
+    left_was_pressed = False
+    right_was_pressed = False
+    force_was_pressed = False
+
+    # Show that the program is ready in training mode.
+    await light_matrix.write("TRAIN")
+
+    # Keep checking for mode changes and sensor presses.
+    while True:
+        # Read whether each hub button is currently pressed.
+        left_is_pressed = button.pressed(button.LEFT) > 0
+        right_is_pressed = button.pressed(button.RIGHT) > 0
+
+        # Switch to training mode when the left button is newly pressed.
+        if left_is_pressed and not left_was_pressed:
+            training_mode = True
+            await light_matrix.write("TRAIN")
+
+        # Switch to testing mode when the right button is newly pressed.
+        if right_is_pressed and not right_was_pressed:
+            training_mode = False
+            await light_matrix.write("TEST")
+
+        # Read whether the force sensor is currently pressed.
+        force_is_pressed = force_sensor.pressed(port.C)
+
+        # Take one measurement when the force sensor is newly pressed.
+        if force_is_pressed and not force_was_pressed:
+            measured_distance = distance_sensor.distance(port.E)
+
+            # Ignore the measurement if the distance sensor has no valid reading.
+            if measured_distance == -1:
+                await light_matrix.write("NO DATA")
+
+            # In training mode, save the measurement and motor-based label.
+            elif training_mode:
+                motor_position = motor.relative_position(port.F)
+
+                # Save a short example when the motor is in the short range.
+                if motor_position >= 0 and motor_position <= 180:
+                    training_distances.append(measured_distance)
+                    training_labels.append("SHORT")
+                    await light_matrix.write("SAVED SHORT")
+
+                # Save a tall example when the motor is in the tall range.
+                elif motor_position >= 181 and motor_position <= 360:
+                    training_distances.append(measured_distance)
+                    training_labels.append("TALL")
+                    await light_matrix.write("SAVED TALL")
+
+                # Ask for a valid motor position if it is outside both ranges.
+                else:
+                    await light_matrix.write("TURN MOTOR")
+
+            # In testing mode, classify the measurement using stored examples.
+            else:
+                # Check that at least one training example has been saved.
+                if len(training_distances) == 0:
+                    await light_matrix.write("NO EXAMPLES")
+
+                else:
+                    # Use at most five neighbors if fewer than five examples exist.
+                    number_of_neighbors = K_NEIGHBORS
+                    if len(training_distances) < K_NEIGHBORS:
+                        number_of_neighbors = len(training_distances)
+
+                    # Mark all training examples as not yet selected.
+                    already_selected = []
+                    for example_number in range(len(training_distances)):
+                        already_selected.append(False)
+
+                    # Count how many of the closest examples are tall or short.
+                    tall_votes = 0
+                    short_votes = 0
+
+                    # Repeatedly select the closest unused training example.
+                    for neighbor_number in range(number_of_neighbors):
+                        closest_index = -1
+                        closest_difference = 1000000
+
+                        # Find the unused example closest to this measurement.
+                        for example_number in range(len(training_distances)):
+                            if not already_selected[example_number]:
+                                difference = abs(
+                                    measured_distance -
+                                    training_distances[example_number]
+                                )
+
+                                if difference < closest_difference:
+                                    closest_difference = difference
+                                    closest_index = example_number
+
+                        # Count the selected example's label as one vote.
+                        if closest_index != -1:
+                            already_selected[closest_index] = True
+
+                            if training_labels[closest_index] == "TALL":
+                                tall_votes = tall_votes + 1
+                            else:
+                                short_votes = short_votes + 1
+
+                    # Display the label with the most votes.
+                    if tall_votes > short_votes:
+                        await light_matrix.write("TALL")
+                    else:
+                        await light_matrix.write("SHORT")
+
+        # Save the current button and force states for the next press check.
+        left_was_pressed = left_is_pressed
+        right_was_pressed = right_is_pressed
+        force_was_pressed = force_is_pressed
+
+        # Give the hub time to check other tasks and update sensor readings.
+        await runloop.sleep_ms(20)
+
+runloop.run(main())</code></pre>
+        </div>
+
+    </div>
+
+</body>
+</html>
